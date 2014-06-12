@@ -1829,12 +1829,10 @@ namespace Novacode
         /// Appends a text run to this Paragraph, using the given character style.
         /// </summary>
         /// <param name="value">The System.String to insert.</param>
-        /// <param name="styleId">The id of the character style to be used for this text run.</param>
-        public void InsertText(string value, string styleId)
+        /// <param name="styleName">The name of the character style to be used for this text run.</param>
+        public void InsertText(string value, string styleName)
         {
-            var runStyleElement = new XElement(XName.Get("rStyle", DocX.w.NamespaceName));
-            runStyleElement.SetAttributeValue(XName.Get("val", DocX.w.NamespaceName), styleId);
-            var runPropertiesElement = new XElement(XName.Get("rPr", DocX.w.NamespaceName), runStyleElement);
+            var runPropertiesElement = CreateRunPropertiesWithStyle(styleName);
             Xml.Add(HelperFunctions.FormatInput(value, runPropertiesElement));
             HelperFunctions.RenumberIDs(Document);
         }
@@ -2137,6 +2135,7 @@ namespace Novacode
         /// Add an image to a document, create a custom view of that image (picture) and then insert it into a Paragraph using append.
         /// </summary>
         /// <param name="p">The Picture to append.</param>
+        /// <param name="styleName">The name of the character style to be used for this picture.</param>
         /// <returns>The Paragraph with the Picture now appended.</returns>
         /// <example>
         /// Add an image to a document, create a custom view of that image (picture) and then insert it into a Paragraph using append.
@@ -2164,7 +2163,7 @@ namespace Novacode
         /// }
         /// </code>
         /// </example>
-        public Paragraph AppendPicture(Picture p)
+        public Paragraph AppendPicture(Picture p, string styleName = null)
         {
             // Convert the path of this mainPart to its equilivant rels file path.
             string path = mainPart.Uri.OriginalString.Replace("/word/", "");
@@ -2178,7 +2177,16 @@ namespace Novacode
             var Id = GetOrGenerateRel(p);
 
             // Add the Picture Xml to the end of the Paragragraph Xml.
-            Xml.Add(p.Xml);
+            if (styleName == null)
+            {
+                Xml.Add(p.Xml);
+            }
+            else
+            {
+                var runPropertiesElement = CreateRunPropertiesWithStyle(styleName);
+                var runElement = new XElement(XName.Get("r", DocX.w.NamespaceName), runPropertiesElement, p.Xml);
+                Xml.Add(runElement);
+            }
 
             // Extract the attribute id from the Pictures Xml.
             XAttribute a_id =
@@ -4092,6 +4100,13 @@ namespace Novacode
             {
                 SpacingAfter(value);
             }
+        }
+
+        private static XElement CreateRunPropertiesWithStyle(string styleName)
+        {
+            var runStyleElement = new XElement(XName.Get("rStyle", DocX.w.NamespaceName));
+            runStyleElement.SetAttributeValue(XName.Get("val", DocX.w.NamespaceName), styleName);
+            return new XElement(XName.Get("rPr", DocX.w.NamespaceName), runStyleElement);
         }
     }
 
