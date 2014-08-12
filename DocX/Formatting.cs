@@ -28,6 +28,7 @@ namespace Novacode
         private int? kerning;
         private int? position;
         private double? spacing;
+        private string styleName;
 
         private CultureInfo language;
 
@@ -239,6 +240,9 @@ namespace Novacode
                         break;
                 }
 
+                if (!styleName.IsNullOrWhiteSpace())
+                    rPr.Add(new XElement(XName.Get("rStyle", DocX.w.NamespaceName), new XAttribute(XName.Get("val", DocX.w.NamespaceName), styleName)));
+
                 return rPr;
             }
         }
@@ -403,6 +407,11 @@ namespace Novacode
         /// -->
         public FontFamily FontFamily { get { return fontFamily; } set { fontFamily = value; } }
 
+        /// <summary>
+        /// The name of the style to apply to this run. If null or whitespace, no style will be applied.
+        /// </summary>
+        public string StyleName { get { return styleName; } set { styleName = value; } }
+
         public int CompareTo(object obj)
         {
             Formatting other = (Formatting)obj;
@@ -459,6 +468,9 @@ namespace Novacode
                 return -1;
 
             if (!other.language.Equals(this.language))
+                return -1;
+
+            if (!string.Equals(other.styleName, this.styleName))
                 return -1;
 
             return 0;
