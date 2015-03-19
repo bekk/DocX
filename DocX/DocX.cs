@@ -882,6 +882,35 @@ namespace Novacode
                 return HelperFunctions.GetText(Xml);
             }
         }
+         /// <summary>
+         /// Get the text of each footnote from this document
+         /// </summary>
+         public IEnumerable<string> FootnotesText
+         {
+             get
+             {
+                foreach (XElement footnote in footnotes.Root.Elements(w + "footnote"))
+                {
+                    yield return HelperFunctions.GetText(footnote);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get the text of each endnote from this document
+        /// </summary>
+        public IEnumerable<string> EndnotesText
+        {
+            get
+            {
+                foreach (XElement endnote in endnotes.Root.Elements(w + "endnote"))
+                {
+                    yield return HelperFunctions.GetText(endnote);
+                }
+            }
+        }
+
+
 
         internal string GetCollectiveText(List<PackagePart> list)
         {
@@ -983,6 +1012,7 @@ namespace Novacode
             List<String> imageContentTypes = new List<string>
             {
                 "image/jpeg",
+                "image/jpg",
                 "image/png",
                 "image/bmp",
                 "image/gif",
@@ -1105,6 +1135,22 @@ namespace Novacode
                 }
             }
 
+            ////ole object links
+            foreach (var oleObject_rel in remote_document.mainPart.GetRelationshipsByType("http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"))
+            {
+                var old_rel_Id = oleObject_rel.Id;
+                var new_rel_Id = mainPart.CreateRelationship(oleObject_rel.TargetUri, oleObject_rel.TargetMode, oleObject_rel.RelationshipType).Id;
+                var oleObject_refs = remote_mainDoc.Descendants(XName.Get("OLEObject", "urn:schemas-microsoft-com:office:office"));
+                foreach (var oleObject_ref in oleObject_refs)
+                {
+                    XAttribute a0 = oleObject_ref.Attribute(XName.Get("id", DocX.r.NamespaceName));
+                    if (a0 != null && a0.Value == old_rel_Id)
+                    {
+                        a0.SetValue(new_rel_Id);
+                    }
+                }
+            }
+
 
             foreach (PackagePart remote_pp in ppc)
             {
@@ -1152,11 +1198,13 @@ namespace Novacode
         private void merge_images(PackagePart remote_pp, DocX remote_document, XDocument remote_mainDoc, String contentType)
         {
             // Before doing any other work, check to see if this image is actually referenced in the document.
-            // In my testing I have found cases of Images inside documents that are not refer
+            // In my testing I have found cases of Images inside documents that are not referenced
             var remote_rel = remote_document.mainPart.GetRelationships().Where(r => r.TargetUri.OriginalString.Equals(remote_pp.Uri.OriginalString.Replace("/word/", ""))).FirstOrDefault();
-            if (remote_rel == null)
-                return;
-
+            if (remote_rel == null) {
+            	remote_rel = remote_document.mainPart.GetRelationships().Where(r => r.TargetUri.OriginalString.Equals(remote_pp.Uri.OriginalString)).FirstOrDefault();
+            	if (remote_rel == null)
+            		return;
+            }
             String remote_Id = remote_rel.Id;
 
             String remote_hash = ComputeMD5HashString(remote_pp.GetStream());
@@ -1172,6 +1220,10 @@ namespace Novacode
                     found = true;
 
                     var local_rel = mainPart.GetRelationships().Where(r => r.TargetUri.OriginalString.Equals(part.Uri.OriginalString.Replace("/word/", ""))).FirstOrDefault();
+                    if (local_rel == null)
+                    {
+                        local_rel = mainPart.GetRelationships().Where(r => r.TargetUri.OriginalString.Equals(part.Uri.OriginalString)).FirstOrDefault();
+                    }
                     if (local_rel != null)
                     {
                         String new_Id = local_rel.Id;
@@ -1208,7 +1260,7 @@ namespace Novacode
             {
                 String new_uri = remote_pp.Uri.OriginalString;
                 new_uri = new_uri.Remove(new_uri.LastIndexOf("/"));
-                new_uri = new_uri.Replace("word/", "");
+                //new_uri = new_uri.Replace("word/", "");
                 new_uri += "/" + Guid.NewGuid().ToString() + contentType.Replace("image/", ".");
                 if (!new_uri.StartsWith("/"))
                     new_uri = "/" + new_uri;
@@ -1232,6 +1284,9 @@ namespace Novacode
 
                 String new_Id = pr.Id;
 
+                //Check if the remote relationship id is a default rId from Word
+                Match defRelId = Regex.Match(remote_Id, @"rId\d+", RegexOptions.IgnoreCase);
+
                 // Replace all instances of remote_Id in the local document with local_Id
                 var elems = remote_mainDoc.Descendants(XName.Get("blip", DocX.a.NamespaceName));
                 foreach (var elem in elems)
@@ -1242,6 +1297,33 @@ namespace Novacode
                         embed.SetValue(new_Id);
                     }
                 }
+
+                if (!defRelId.Success)
+				{
+	               	// Replace all instances of remote_Id in the local document with local_Id
+	                var elems_local = mainDoc.Descendants(XName.Get("blip", DocX.a.NamespaceName));
+	                foreach (var elem in elems_local)
+	                {
+	                    XAttribute embed = elem.Attribute(XName.Get("embed", DocX.r.NamespaceName));
+	                    if (embed != null && embed.Value == remote_Id)
+	                    {
+	                        embed.SetValue(new_Id);
+	                    }
+	                }
+					
+	                                
+	                // Replace all instances of remote_Id in the local document with local_Id
+	                var v_elems_local = mainDoc.Descendants(XName.Get("imagedata", DocX.v.NamespaceName));
+	                foreach (var elem in v_elems_local)
+	                {
+	                    XAttribute id = elem.Attribute(XName.Get("id", DocX.r.NamespaceName));
+	                    if (id != null && id.Value == remote_Id)
+	                    {
+	                        id.SetValue(new_Id);
+	                    }
+	                }
+				}
+
 
                 // Replace all instances of remote_Id in the local document with local_Id (for shapes as well)
                 var v_elems = remote_mainDoc.Descendants(XName.Get("imagedata", DocX.v.NamespaceName));
@@ -2183,6 +2265,13 @@ namespace Novacode
             using (TextReader tr = new StreamReader(document.settingsPart.GetStream()))
                 document.settings = XDocument.Load(tr);
 
+            document.paragraphLookup.Clear();
+            foreach (var paragraph in document.Paragraphs)
+            {
+                if (!document.paragraphLookup.ContainsKey(paragraph.endIndex))
+                    document.paragraphLookup.Add(paragraph.endIndex, paragraph);
+            }
+            
             return document;
         }
 
@@ -2262,37 +2351,37 @@ namespace Novacode
                 switch (rel.RelationshipType)
                 {
                     case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes":
-                        document.endnotesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.endnotesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.endnotesPart.GetStream()))
                             document.endnotes = XDocument.Load(tr);
                         break;
 
                     case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes":
-                        document.footnotesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.footnotesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.footnotesPart.GetStream()))
                             document.footnotes = XDocument.Load(tr);
                         break;
 
                     case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles":
-                        document.stylesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.stylesPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.stylesPart.GetStream()))
                             document.styles = XDocument.Load(tr);
                         break;
 
                     case "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects":
-                        document.stylesWithEffectsPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.stylesWithEffectsPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.stylesWithEffectsPart.GetStream()))
                             document.stylesWithEffects = XDocument.Load(tr);
                         break;
 
                     case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable":
-                        document.fontTablePart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.fontTablePart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.fontTablePart.GetStream()))
                             document.fontTable = XDocument.Load(tr);
                         break;
 
                     case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering":
-                        document.numberingPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.RelativeOrAbsolute));
+                        document.numberingPart = package.GetPart(new Uri("/word/" + rel.TargetUri.OriginalString.Replace("/word/", ""), UriKind.Relative));
                         using (TextReader tr = new StreamReader(document.numberingPart.GetStream()))
                             document.numbering = XDocument.Load(tr);
                         break;
@@ -2417,7 +2506,7 @@ namespace Novacode
 
             MemoryStream ms = new MemoryStream();
 
-            using (FileStream fs = new FileStream(filename, FileMode.Open,FileAccess.Read))
+            using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 byte[] data = new byte[fs.Length];
                 fs.Read(data, 0, (int)fs.Length);
@@ -2994,7 +3083,10 @@ namespace Novacode
                 newImageStream = o as Stream;
 
             // Get all image parts in word\document.xml
-            List<PackagePart> imageParts = mainPart.GetRelationshipsByType("http://schemas.openxmlformats.org/officeDocument/2006/relationships/image").Select(ir => package.GetParts().Where(p => p.Uri.ToString().EndsWith(ir.TargetUri.ToString())).First()).ToList();
+
+            PackageRelationshipCollection relationshipsByImages = mainPart.GetRelationshipsByType("http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
+            List<PackagePart> imageParts = relationshipsByImages.Select(ir => package.GetParts().FirstOrDefault(p => p.Uri.ToString().EndsWith(ir.TargetUri.ToString()))).Where(e => e != null).ToList();
+
             foreach (PackagePart relsPart in package.GetParts().Where(part => part.Uri.ToString().Contains("/word/")).Where(part => part.ContentType.Equals("application/vnd.openxmlformats-package.relationships+xml")))
             {
                 XDocument relsPartContent;
@@ -3012,15 +3104,26 @@ namespace Novacode
                 {
                     if (imageRelationship.Attribute(XName.Get("Target")) != null)
                     {
-                        string imagePartUri = Path.Combine(Path.GetDirectoryName(relsPart.Uri.ToString()), imageRelationship.Attribute(XName.Get("Target")).Value);
-                        imagePartUri = Path.GetFullPath(imagePartUri.Replace("\\_rels", string.Empty));
-                        imagePartUri = imagePartUri.Replace(Path.GetFullPath("\\"), string.Empty).Replace("\\", "/");
+                        string targetMode = string.Empty;
 
-                        if (!imagePartUri.StartsWith("/"))
-                            imagePartUri = "/" + imagePartUri;
+                        XAttribute targetModeAttibute = imageRelationship.Attribute(XName.Get("TargetMode"));
+                        if (targetModeAttibute != null)
+                        {
+                            targetMode = targetModeAttibute.Value;
+                        }
 
-                        PackagePart imagePart = package.GetPart(new Uri(imagePartUri, UriKind.Relative));
-                        imageParts.Add(imagePart);
+                        if (!targetMode.Equals("External"))
+                        {
+                            string imagePartUri = Path.Combine(Path.GetDirectoryName(relsPart.Uri.ToString()), imageRelationship.Attribute(XName.Get("Target")).Value);
+                            imagePartUri = Path.GetFullPath(imagePartUri.Replace("\\_rels", string.Empty));
+                            imagePartUri = imagePartUri.Replace(Path.GetFullPath("\\"), string.Empty).Replace("\\", "/");
+
+                            if (!imagePartUri.StartsWith("/"))
+                                imagePartUri = "/" + imagePartUri;
+
+                            PackagePart imagePart = package.GetPart(new Uri(imagePartUri, UriKind.Relative));
+                            imageParts.Add(imagePart);
+                        }
                     }
                 }
             }
@@ -3112,6 +3215,9 @@ namespace Novacode
             // Save the main document
             using (TextWriter tw = new StreamWriter(mainPart.GetStream(FileMode.Create, FileAccess.Write)))
                 mainDoc.Save(tw, SaveOptions.None);
+
+            using (TextReader tr = new StreamReader(settingsPart.GetStream()))
+                settings = XDocument.Load(tr);
 
             XElement body = mainDoc.Root.Element(w + "body");
             XElement sectPr = body.Descendants(w + "sectPr").FirstOrDefault();
