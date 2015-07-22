@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
 
@@ -5,14 +7,26 @@ namespace Novacode
 {
     public class Footnote : DocXElement
     {
-        internal Footnote(DocX document, XElement xml) : base(document, xml)
+        public List<FormattedText> MagicText
         {
-            Id = xml.GetAttribute(XName.Get("id", DocX.w.NamespaceName));
-            var footnoteElement = document.footnotes.Descendants(XName.Get("footnote", DocX.w.NamespaceName)).First(f => f.GetAttribute(XName.Get("id", DocX.w.NamespaceName)) == Id);
-            Text = HelperFunctions.GetText(footnoteElement);
+            get
+            {
+                try {
+                    return HelperFunctions.GetFormattedText(Xml);
+                } catch (Exception) {
+                    return null;
+                }
+            }
         }
 
-        public string Text { get; private set; }
-        public string Id { get; private set; }
+        public string Text => HelperFunctions.GetText(Xml);
+        public string Id => Xml.GetAttribute(XName.Get("id", DocX.w.NamespaceName));
+
+        internal Footnote(DocX document, string footnoteId) : base(document, GetFootnodeXml(document, footnoteId))
+        {
+        }
+
+        private static XElement GetFootnodeXml(DocX document, string footnoteId) =>
+            document.footnotes.Descendants(XName.Get("footnote", DocX.w.NamespaceName)).First(f => f.GetAttribute(XName.Get("id", DocX.w.NamespaceName)) == footnoteId);
     }
 }
