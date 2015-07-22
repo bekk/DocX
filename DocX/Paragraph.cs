@@ -228,6 +228,15 @@ namespace Novacode
             }
         }
 
+        public List<Footnote> Footnotes
+        {
+            get
+            {
+                var footnoteElements = Xml.Descendants(XName.Get("footnoteReference", DocX.w.NamespaceName));
+                return footnoteElements.Select(element => new Footnote(Document, element)).ToList();
+            }
+        }
+
         ///<summary>
         /// The style name of the paragraph.
         ///</summary>
@@ -1388,7 +1397,6 @@ namespace Novacode
                 try
                 {
                     return HelperFunctions.GetFormattedText(Xml);
-
                 }
                 catch (Exception)
                 {
